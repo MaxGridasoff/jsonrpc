@@ -114,8 +114,10 @@ func (srv *Server) Call(namespace string, method string, args []interface{}) {
 
 		for i := 0; i < len(args); i++ {
 			v := reflect.ValueOf(target.in[i])
+			va := reflect.ValueOf(args[i])
 			// NEXT: нужно передать Value из аргументов !!!
-			v.Set(reflect.ValueOf(args[i]))
+			v.Set(va)
+
 			in[i] = v
 		}
 	}
