@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"reflect"
+	"strconv"
 )
 
 type Service struct{}
@@ -109,7 +110,7 @@ func (srv *Server) Call(namespace string, method string, args []interface{}) {
 
 	target := srv.namespaces[namespace].methods[method]
 	in := make([]reflect.Value, len(target.in))
-
+	fmt.Printf("Len of target in = %d\n", len(target.in))
 	if len(target.in) == 0 {
 	} else {
 		// TODO: подумать, что делать с вариантом args ...type
@@ -121,26 +122,54 @@ func (srv *Server) Call(namespace string, method string, args []interface{}) {
 			v := reflect.New(target.in[i]).Elem()
 
 			if target.in[i].Kind() == reflect.Slice {
-				// NEXT: Если в аргументах передали Slice нужно научится создавать свой собственный слайс с заданным типом
-				// []interface{ []int{1,2} }  -> нужно определить, что в первом элементе находится Slice и тип int,
-				// после этого создать reflect.Value от Slice и заполнить его значениями reflect.Value от элементов Slice-a
-				va := reflect.MakeSlice(v.Type(), len(args[i]), len(args[i]))
-				for j := 0; j < len(args[i]); j++ {
-					item := va.Index(j)
-					item.Set()
+				va := reflect.ValueOf(args[i])
+
+				if va.Kind() != reflect.Slice {
+					fmt.Errorf("argument should be a slice, %s given", va.Kind().String())
+					break
 				}
-				println(v.Kind().String() + " = " + va.Kind().String())
+				v = reflect.MakeSlice(target.in[i], va.Len(), va.Cap())
+
+				// получаем Slice от args[i]
+				for j := 0; j < va.Len(); j++ {
+					// NEXT: нужно научится конвертировать interface в конкретный тип
+					//vCurrent := va.Index(j)
+					vCurrent := reflect.New(v.Index(j).Type()).Elem()
+					if !vCurrent.CanSet() {
+						println("vCurrent cant")
+					}
+					vCurrent.Set(va.Index(j))
+
+					if !v.Index(j).CanSet() {
+						println("cant set to a slice")
+					}
+
+					//vCurrent = vCurrent.Convert(v.Index(j).Type())
+					println(" = " + vCurrent.Kind().String())
+					v.Index(j).Set(vCurrent)
+
+				}
+
 			} else {
 				va := reflect.ValueOf(args[i])
+				if !v.CanSet() {
+					println("cant set")
+				}
 				v.Set(va)
 			}
 
-			if !v.CanSet() {
-				println("cant set")
-			}
 			in[i] = v
 		}
 	}
+
+	if len(target.in) > 0 {
+		fmt.Printf("Len on in = %d\n", len(in))
+		if method == "Method3" {
+			fmt.Printf("Struct of in = %+v\n", in[0].Index(0).Kind().String())
+		}
+
+	}
+
 	val := target.value.Call(in)
 	fmt.Printf("%+v\n", val[0].Interface())
 }
@@ -162,6 +191,7 @@ func (srv *Service) Method3(a []int) (int, error) {
 		result += item
 	}
 
+	println("result = " + strconv.Itoa(result))
 	return result, nil
 }
 
@@ -176,6 +206,6 @@ func main() {
 
 	server.Call("service", "Method2", []interface{}{1, 2})
 	server.Call("service", "Method3", []interface{}{
-		[]interface{}{1, 4},
+		[]interface{}{2, 4},
 	})
 }
