@@ -7,8 +7,7 @@ import (
 	"reflect"
 )
 
-type Service struct {
-}
+type Service struct{}
 
 type Server struct {
 	namespaces map[string]Namespace
@@ -70,7 +69,10 @@ func (srv *Server) Register(service string, obj any) error {
 
 			if in.Kind() == reflect.Slice {
 				srv.namespaces[service].methods[rt.Method(i).Name].in[j] = in
-				srv.namespaces[service].methods[rt.Method(i).Name].inString[j] = fmt.Sprintf("[]%s", in.Elem().String())
+				srv.namespaces[service].methods[rt.Method(i).Name].inString[j] = fmt.Sprintf(
+					"[]%s",
+					in.Elem().String(),
+				)
 			} else {
 				srv.namespaces[service].methods[rt.Method(i).Name].in[j] = in
 				srv.namespaces[service].methods[rt.Method(i).Name].inString[j] = in.Kind().String()
@@ -84,14 +86,16 @@ func (srv *Server) Register(service string, obj any) error {
 			case reflect.Interface:
 				srv.namespaces[service].methods[rt.Method(i).Name].out[j] = out
 				srv.namespaces[service].methods[rt.Method(i).Name].outString[j] = out.String()
-				break
 			case reflect.Slice:
 				srv.namespaces[service].methods[rt.Method(i).Name].out[j] = out
-				srv.namespaces[service].methods[rt.Method(i).Name].outString[j] = fmt.Sprintf("[]%s", out.String())
-				break
+				srv.namespaces[service].methods[rt.Method(i).Name].outString[j] = fmt.Sprintf(
+					"[]%s",
+					out.String(),
+				)
 			default:
 				srv.namespaces[service].methods[rt.Method(i).Name].out[j] = out
-				srv.namespaces[service].methods[rt.Method(i).Name].outString[j] = out.Kind().String()
+				srv.namespaces[service].methods[rt.Method(i).Name].outString[j] = out.Kind().
+					String()
 			}
 
 		}
@@ -105,6 +109,7 @@ func (srv *Server) Call(namespace string, method string, args []interface{}) {
 
 	target := srv.namespaces[namespace].methods[method]
 	in := make([]reflect.Value, len(target.in))
+
 	if len(target.in) == 0 {
 	} else {
 		// TODO: подумать, что делать с вариантом args ...type
@@ -113,17 +118,31 @@ func (srv *Server) Call(namespace string, method string, args []interface{}) {
 		}
 
 		for i := 0; i < len(args); i++ {
-			v := reflect.ValueOf(target.in[i])
-			va := reflect.ValueOf(args[i])
-			// NEXT: нужно передать Value из аргументов !!!
-			v.Set(va)
+			v := reflect.New(target.in[i]).Elem()
 
+			if target.in[i].Kind() == reflect.Slice {
+				// NEXT: Если в аргументах передали Slice нужно научится создавать свой собственный слайс с заданным типом
+				// []interface{ []int{1,2} }  -> нужно определить, что в первом элементе находится Slice и тип int,
+				// после этого создать reflect.Value от Slice и заполнить его значениями reflect.Value от элементов Slice-a
+				va := reflect.MakeSlice(v.Type(), len(args[i]), len(args[i]))
+				for j := 0; j < len(args[i]); j++ {
+					item := va.Index(j)
+					item.Set()
+				}
+				println(v.Kind().String() + " = " + va.Kind().String())
+			} else {
+				va := reflect.ValueOf(args[i])
+				v.Set(va)
+			}
+
+			if !v.CanSet() {
+				println("cant set")
+			}
 			in[i] = v
 		}
 	}
 	val := target.value.Call(in)
-	fmt.Printf("%+v\n", val)
-
+	fmt.Printf("%+v\n", val[0].Interface())
 }
 
 func (srv *Service) Method1() (string, error) {
@@ -156,4 +175,7 @@ func main() {
 	server.Call("service", "Method1", []interface{}{})
 
 	server.Call("service", "Method2", []interface{}{1, 2})
+	server.Call("service", "Method3", []interface{}{
+		[]interface{}{1, 4},
+	})
 }
