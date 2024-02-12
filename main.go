@@ -35,12 +35,14 @@ type Method struct {
 	outString []string
 }
 
+// NewServer construct
 func NewServer() *Server {
 	return &Server{
 		namespaces: make(map[string]Namespace),
 	}
 }
 
+// Register service from instance of struct, collect all methods arguments and returns
 func (srv *Server) Register(service string, obj any) error {
 	// check if obj is struct instance
 
@@ -119,9 +121,8 @@ func (srv *Server) Register(service string, obj any) error {
 	return nil
 }
 
+// decoderType compare source.Kind vs destination.Kind. If it's float64 vs int, then convert float64 to int
 func (srv *Server) decoderType(source, destination reflect.Value) (reflect.Value, error) {
-
-	var result reflect.Value
 
 	if source.Type() == destination.Type() {
 		return source, nil
@@ -129,14 +130,12 @@ func (srv *Server) decoderType(source, destination reflect.Value) (reflect.Value
 
 	if source.Kind() == reflect.Float64 && destination.Kind() == reflect.Int {
 		return source.Convert(destination.Type()), nil
-	} else {
-		return source, nil
 	}
-
-	return result, nil
+	return source, nil
 
 }
 
+// call will create arguments for called method and then call it
 func (srv *Server) call(namespace string, method string, args []interface{}) (interface{}, error) {
 
 	target := srv.namespaces[namespace].methods[method]
