@@ -234,6 +234,7 @@ type JsonRpcResponseError struct {
 	Message string `json:"message"`
 }
 
+// Handlers get JSON-RPC request
 func (srv *Server) Handler(data []byte) {
 
 	var request JsonRpcRequest
