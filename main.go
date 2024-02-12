@@ -1,13 +1,23 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"reflect"
+	"strings"
 )
 
 type Service struct{}
+
+const (
+	JsonRpcParseError     = -32700
+	JsonRpcInvalidRequest = -32600
+	JsonRpcMethodNotFound = -32601
+	JsonRpcInvalidaParams = -32602
+	JsonRpcInternalError  = -32603
+)
 
 type Server struct {
 	namespaces map[string]Namespace
@@ -105,15 +115,32 @@ func (srv *Server) Register(service string, obj any) error {
 	return nil
 }
 
-func (srv *Server) Call(namespace string, method string, args []interface{}) {
+func (srv *Server) decoderType(source, destination reflect.Value) (reflect.Value, error) {
+
+	var result reflect.Value
+
+	if source.Type() == destination.Type() {
+		return source, nil
+	}
+
+	if source.Kind() == reflect.Float64 && destination.Kind() == reflect.Int {
+		return source.Convert(destination.Type()), nil
+	} else {
+		return source, nil
+	}
+
+	return result, nil
+
+}
+
+func (srv *Server) call(namespace string, method string, args []interface{}) (interface{}, error) {
 
 	target := srv.namespaces[namespace].methods[method]
 	in := make([]reflect.Value, len(target.in))
 	if len(target.in) == 0 {
 	} else {
-		// TODO: подумать, что делать с вариантом args ...type
 		if len(args) != len(target.in) {
-			return
+			return nil, fmt.Errorf("length of agrs is not enough")
 		}
 
 		for i := 0; i < len(args); i++ {
@@ -123,8 +150,7 @@ func (srv *Server) Call(namespace string, method string, args []interface{}) {
 			if target.in[i].Kind() == reflect.Slice {
 
 				if va.Kind() != reflect.Slice {
-					fmt.Errorf("argument should be a slice, %s given", va.Kind().String())
-					break
+					return nil, fmt.Errorf("argument should be a slice, %s given", va.Kind().String())
 				}
 				v = reflect.MakeSlice(target.in[i], va.Len(), va.Cap())
 
@@ -136,7 +162,14 @@ func (srv *Server) Call(namespace string, method string, args []interface{}) {
 						continue
 					}
 
-					vCurrent.Set(va.Index(j).Elem())
+					convertedVO, err := srv.decoderType(va.Index(j).Elem(), vCurrent)
+					if err != nil {
+						println(err.Error())
+						return nil, err
+					}
+
+					vCurrent.Set(convertedVO)
+					//vCurrent.Set(va.Index(j).Elem())
 					if !v.Index(j).CanSet() {
 						println("cant set to a slice")
 					}
@@ -144,10 +177,18 @@ func (srv *Server) Call(namespace string, method string, args []interface{}) {
 				}
 
 			} else {
+
+				println(method + " = " + v.Type().String())
+
 				if !v.CanSet() {
 					println("cant set")
 				}
-				v.Set(va)
+				convertedVO, err := srv.decoderType(va, v)
+				if err != nil {
+					println(err.Error())
+					return nil, err
+				}
+				v.Set(convertedVO)
 			}
 
 			in[i] = v
@@ -156,6 +197,59 @@ func (srv *Server) Call(namespace string, method string, args []interface{}) {
 
 	val := target.value.Call(in)
 	fmt.Printf("%+v\n", val[0].Interface())
+	return val, nil
+}
+
+type JsonRpcRequest struct {
+	JsonRpc string        `json:"jsonrpc"`
+	Method  string        `json:"method"`
+	Params  []interface{} `json:"params"`
+	Id      *string       `json:"id,omitempty"`
+}
+
+type JsonRpcResponse struct {
+	JsonRpc string               `json:"jsonrpc"`
+	Id      *string              `json:"id"`
+	Error   JsonRpcResponseError `json:"error,omitempty"`
+}
+
+type JsonRpcResponseError struct {
+	Code    int64  `json:"code"`
+	Message string `json:"message"`
+}
+
+func (srv *Server) Handler(data []byte) {
+
+	var request JsonRpcRequest
+
+	err := json.Unmarshal(data, &request)
+	if err != nil {
+		return
+	}
+
+	if request.Id == nil || len(*request.Id) == 0 {
+		println("id not set")
+		return
+	}
+
+	path := strings.Split(request.Method, ".")
+	if len(path) != 2 {
+		return
+	}
+
+	namespace, method := path[0], path[1]
+	if _, ok := srv.namespaces[namespace]; !ok {
+		println("namespace not found")
+		return
+	}
+
+	if _, ok := srv.namespaces[namespace].methods[method]; !ok {
+		println("method not found")
+		return
+	}
+
+	srv.call(namespace, method, request.Params)
+
 }
 
 func (srv *Service) Method1() (string, error) {
@@ -196,7 +290,7 @@ type Request struct {
 
 func (srv *Service) Method5(obj Request) (string, error) {
 	fmt.Printf("%+v\n", obj)
-	return "result of method1", nil
+	return "result of method5", nil
 }
 
 func main() {
@@ -206,14 +300,20 @@ func main() {
 	server := NewServer()
 
 	_ = server.Register("service", tmp)
-	server.Call("service", "Method1", []interface{}{})
+	/*
+		server.Call("service", "Method1", []interface{}{})
 
-	server.Call("service", "Method2", []interface{}{1, 2})
-	server.Call("service", "Method3", []interface{}{
-		[]interface{}{2, 4},
-	})
-	server.Call("service", "Method4", []interface{}{
-		[]interface{}{2.0, 4.0},
-	})
+		server.Call("service", "Method2", []interface{}{1, 2})
+		server.Call("service", "Method3", []interface{}{
+			[]interface{}{2, 4},
+		})
+		server.Call("service", "Method4", []interface{}{
+			[]interface{}{2.0, 4.0},
+		})
+	*/
 
+	server.Handler([]byte(`{"jsonrpc": "2.0", "method": "service.Method2", "params": [1,10], "id":"1"}`))
+	server.Handler([]byte(`{"jsonrpc": "2.0", "method": "service.Method3", "params": [[1,2,7]], "id":"1"}`))
+	server.Handler([]byte(`{"jsonrpc": "2.0", "method": "service.Method4", "params": [[1,2]], "id":"1"}`))
+	server.Handler([]byte(`{"jsonrpc": "2.0", "method": "service.Method5", "params": [{"name":"maxim}], "id":"1"}`))
 }
