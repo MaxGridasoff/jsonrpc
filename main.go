@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"reflect"
-	"strconv"
 )
 
 type Service struct{}
@@ -110,7 +109,6 @@ func (srv *Server) Call(namespace string, method string, args []interface{}) {
 
 	target := srv.namespaces[namespace].methods[method]
 	in := make([]reflect.Value, len(target.in))
-	fmt.Printf("Len of target in = %d\n", len(target.in))
 	if len(target.in) == 0 {
 	} else {
 		// TODO: подумать, что делать с вариантом args ...type
@@ -120,9 +118,9 @@ func (srv *Server) Call(namespace string, method string, args []interface{}) {
 
 		for i := 0; i < len(args); i++ {
 			v := reflect.New(target.in[i]).Elem()
+			va := reflect.ValueOf(args[i])
 
 			if target.in[i].Kind() == reflect.Slice {
-				va := reflect.ValueOf(args[i])
 
 				if va.Kind() != reflect.Slice {
 					fmt.Errorf("argument should be a slice, %s given", va.Kind().String())
@@ -132,26 +130,20 @@ func (srv *Server) Call(namespace string, method string, args []interface{}) {
 
 				// получаем Slice от args[i]
 				for j := 0; j < va.Len(); j++ {
-					// NEXT: нужно научится конвертировать interface в конкретный тип
-					//vCurrent := va.Index(j)
 					vCurrent := reflect.New(v.Index(j).Type()).Elem()
-					if !vCurrent.CanSet() {
-						println("vCurrent cant")
-					}
-					vCurrent.Set(va.Index(j))
 
+					if !vCurrent.CanSet() {
+						continue
+					}
+
+					vCurrent.Set(va.Index(j).Elem())
 					if !v.Index(j).CanSet() {
 						println("cant set to a slice")
 					}
-
-					//vCurrent = vCurrent.Convert(v.Index(j).Type())
-					println(" = " + vCurrent.Kind().String())
 					v.Index(j).Set(vCurrent)
-
 				}
 
 			} else {
-				va := reflect.ValueOf(args[i])
 				if !v.CanSet() {
 					println("cant set")
 				}
@@ -160,14 +152,6 @@ func (srv *Server) Call(namespace string, method string, args []interface{}) {
 
 			in[i] = v
 		}
-	}
-
-	if len(target.in) > 0 {
-		fmt.Printf("Len on in = %d\n", len(in))
-		if method == "Method3" {
-			fmt.Printf("Struct of in = %+v\n", in[0].Index(0).Kind().String())
-		}
-
 	}
 
 	val := target.value.Call(in)
@@ -191,8 +175,28 @@ func (srv *Service) Method3(a []int) (int, error) {
 		result += item
 	}
 
-	println("result = " + strconv.Itoa(result))
 	return result, nil
+}
+
+func (srv *Service) Method4(a []float64) (float64, error) {
+	if len(a) < 2 {
+		return 0, errors.New("wrong arguments number")
+	}
+	result := 0.0
+	for _, item := range a {
+		result += item
+	}
+
+	return result, nil
+}
+
+type Request struct {
+	Name string `json:"name"`
+}
+
+func (srv *Service) Method5(obj Request) (string, error) {
+	fmt.Printf("%+v\n", obj)
+	return "result of method1", nil
 }
 
 func main() {
@@ -208,4 +212,8 @@ func main() {
 	server.Call("service", "Method3", []interface{}{
 		[]interface{}{2, 4},
 	})
+	server.Call("service", "Method4", []interface{}{
+		[]interface{}{2.0, 4.0},
+	})
+
 }
