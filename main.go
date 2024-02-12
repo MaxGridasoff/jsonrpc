@@ -77,15 +77,19 @@ func (srv *Server) Register(service string, obj any) error {
 		for j := 0; j < method.Type().NumIn(); j++ {
 			in := method.Type().In(j)
 
-			if in.Kind() == reflect.Slice {
+			switch in.Kind() {
+			case reflect.Slice:
 				srv.namespaces[service].methods[rt.Method(i).Name].in[j] = in
 				srv.namespaces[service].methods[rt.Method(i).Name].inString[j] = fmt.Sprintf(
 					"[]%s",
 					in.Elem().String(),
 				)
-			} else {
+			case reflect.Struct:
 				srv.namespaces[service].methods[rt.Method(i).Name].in[j] = in
 				srv.namespaces[service].methods[rt.Method(i).Name].inString[j] = in.Kind().String()
+			default:
+				srv.namespaces[service].methods[rt.Method(i).Name].in[j] = in
+				srv.namespaces[service].methods[rt.Method(i).Name].inString[j] = in.String()
 			}
 		}
 
@@ -147,8 +151,25 @@ func (srv *Server) call(namespace string, method string, args []interface{}) (in
 			v := reflect.New(target.in[i]).Elem()
 			va := reflect.ValueOf(args[i])
 
-			if target.in[i].Kind() == reflect.Slice {
+			switch target.in[i].Kind() {
+			case reflect.Struct:
+				data, err := json.Marshal(args[i])
+				if err != nil {
+					println(err.Error())
+					return nil, nil
+				}
 
+				structVO := reflect.New(target.in[i]).Interface()
+
+				err = json.Unmarshal(data, structVO)
+				if err != nil {
+					println(err.Error())
+					return nil, nil
+				}
+				va = reflect.ValueOf(structVO).Elem()
+				v.Set(va)
+
+			case reflect.Slice:
 				if va.Kind() != reflect.Slice {
 					return nil, fmt.Errorf("argument should be a slice, %s given", va.Kind().String())
 				}
@@ -175,11 +196,7 @@ func (srv *Server) call(namespace string, method string, args []interface{}) (in
 					}
 					v.Index(j).Set(vCurrent)
 				}
-
-			} else {
-
-				println(method + " = " + v.Type().String())
-
+			default:
 				if !v.CanSet() {
 					println("cant set")
 				}
@@ -224,6 +241,7 @@ func (srv *Server) Handler(data []byte) {
 
 	err := json.Unmarshal(data, &request)
 	if err != nil {
+		println(err.Error())
 		return
 	}
 
@@ -285,7 +303,9 @@ func (srv *Service) Method4(a []float64) (float64, error) {
 }
 
 type Request struct {
-	Name string `json:"name"`
+	Name     string `json:"name"`
+	Lastname string `json:"lastname"`
+	Phones   []int  `json:"phones"`
 }
 
 func (srv *Service) Method5(obj Request) (string, error) {
@@ -315,5 +335,5 @@ func main() {
 	server.Handler([]byte(`{"jsonrpc": "2.0", "method": "service.Method2", "params": [1,10], "id":"1"}`))
 	server.Handler([]byte(`{"jsonrpc": "2.0", "method": "service.Method3", "params": [[1,2,7]], "id":"1"}`))
 	server.Handler([]byte(`{"jsonrpc": "2.0", "method": "service.Method4", "params": [[1,2]], "id":"1"}`))
-	server.Handler([]byte(`{"jsonrpc": "2.0", "method": "service.Method5", "params": [{"name":"maxim}], "id":"1"}`))
+	server.Handler([]byte(`{"jsonrpc": "2.0", "method": "service.Method5", "params": [{"name":"maxim", "phones":[123,456]}], "id":"1"}`))
 }
