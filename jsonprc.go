@@ -213,7 +213,7 @@ func (srv *Server) call(namespace string, method string, args []interface{}) (in
 
 	val := target.value.Call(in)
 	fmt.Printf("%+v\n", val[0].Interface())
-	return val, nil
+	return val[0].Interface(), nil
 }
 
 type JsonRpcRequest struct {
@@ -224,9 +224,10 @@ type JsonRpcRequest struct {
 }
 
 type JsonRpcResponse struct {
-	JsonRpc string               `json:"jsonrpc"`
-	Id      *string              `json:"id"`
-	Error   JsonRpcResponseError `json:"error,omitempty"`
+	JsonRpc string                `json:"jsonrpc"`
+	Id      *string               `json:"id"`
+	Result  interface{}           `json:"result,omitempty"`
+	Error   *JsonRpcResponseError `json:"error,omitempty"`
 }
 
 type JsonRpcResponseError struct {
@@ -234,39 +235,79 @@ type JsonRpcResponseError struct {
 	Message string `json:"message"`
 }
 
-// Handlers get JSON-RPC request
-func (srv *Server) Handler(data []byte) {
+func (srv *Server) buildResponse(response JsonRpcResponse) []byte {
+	data, _ := json.Marshal(response)
+	return data
+}
+
+func (srv *Server) Handler(data []byte) []byte {
 
 	var request JsonRpcRequest
+	var response JsonRpcResponse
+	response.JsonRpc = "2.0"
 
 	err := json.Unmarshal(data, &request)
 	if err != nil {
+		response.Error = &JsonRpcResponseError{
+			Code:    JsonRpcParseError,
+			Message: "Invalid JSON was received by the server.",
+		}
 		println(err.Error())
-		return
+		return srv.buildResponse(response)
 	}
 
 	if request.Id == nil || len(*request.Id) == 0 {
 		println("id not set")
-		return
+		response.Error = &JsonRpcResponseError{
+			Code:    JsonRpcInvalidRequest,
+			Message: "The JSON sent is not a valid Request object. Request ID not set",
+		}
+		return srv.buildResponse(response)
 	}
+
+	response.Id = request.Id
 
 	path := strings.Split(request.Method, ".")
 	if len(path) != 2 {
-		return
+		response.Error = &JsonRpcResponseError{
+			Code:    JsonRpcInvalidRequest,
+			Message: "The JSON sent is not a valid Request object. Method in wrong format",
+		}
+		return srv.buildResponse(response)
 	}
 
 	namespace, method := path[0], path[1]
 	if _, ok := srv.namespaces[namespace]; !ok {
 		println("namespace not found")
-		return
+		response.Error = &JsonRpcResponseError{
+			Code:    JsonRpcMethodNotFound,
+			Message: "The namespace or method does not exist / is not available.",
+		}
+		return srv.buildResponse(response)
 	}
 
 	if _, ok := srv.namespaces[namespace].methods[method]; !ok {
 		println("method not found")
-		return
+		response.Error = &JsonRpcResponseError{
+			Code:    JsonRpcMethodNotFound,
+			Message: "The namespace or method does not exist / is not available.",
+		}
+		return srv.buildResponse(response)
 	}
 
-	srv.call(namespace, method, request.Params)
+	result, err := srv.call(namespace, method, request.Params)
+	if err != nil {
+		response.Error = &JsonRpcResponseError{
+			Code:    JsonRpcInternalError,
+			Message: "Something went wrong",
+		}
+		return srv.buildResponse(response)
+	}
+
+	response.Result = result
+	response.Error = nil
+
+	return srv.buildResponse(response)
 
 }
 
@@ -320,20 +361,12 @@ func main() {
 	server := NewServer()
 
 	_ = server.Register("service", tmp)
-	/*
-		server.Call("service", "Method1", []interface{}{})
 
-		server.Call("service", "Method2", []interface{}{1, 2})
-		server.Call("service", "Method3", []interface{}{
-			[]interface{}{2, 4},
-		})
-		server.Call("service", "Method4", []interface{}{
-			[]interface{}{2.0, 4.0},
-		})
-	*/
+	// NEXT: вытащить в отдельный package
+	// желательно придумать, как написать тесты
 
-	server.Handler([]byte(`{"jsonrpc": "2.0", "method": "service.Method2", "params": [1,10], "id":"1"}`))
-	server.Handler([]byte(`{"jsonrpc": "2.0", "method": "service.Method3", "params": [[1,2,7]], "id":"1"}`))
+	server.Handler([]byte(`{"jsonrpc": "2.0", "method": "service.Method2", "params": [1], "id":"1"}`))
+	server.Handler([]byte(`{"jsonrpc": "2.0", "method": "servic1e.Method3", "params": [[1,2,7]], "id":"1"}`))
 	server.Handler([]byte(`{"jsonrpc": "2.0", "method": "service.Method4", "params": [[1,2]], "id":"1"}`))
 	server.Handler([]byte(`{"jsonrpc": "2.0", "method": "service.Method5", "params": [{"name":"maxim", "phones":[123,456]}], "id":"1"}`))
 }
