@@ -1,3 +1,3 @@
-module github.com/MaxGridasoff/jsonrpc
+module github.com/maxgridasoff/jsonrpc
 
 go 1.21.3
