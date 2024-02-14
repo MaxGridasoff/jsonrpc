@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"reflect"
 	"strings"
 )
@@ -48,9 +47,7 @@ func (srv *Server) Register(service string, obj any) error {
 
 	// check if kind of obj == reflect.Struct
 	if r.Kind() == reflect.Ptr {
-		log.Println("it's a pointer")
 		if r.Elem().Kind() == reflect.Struct {
-			log.Println("it's a struct")
 		} else {
 			return errors.New("ptr on struct expected")
 		}
