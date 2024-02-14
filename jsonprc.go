@@ -207,7 +207,6 @@ func (srv *Server) call(namespace string, method string, args []interface{}) (in
 	}
 
 	val := target.value.Call(in)
-	fmt.Printf("%+v\n", val[0].Interface())
 	return val[0].Interface(), nil
 }
 
