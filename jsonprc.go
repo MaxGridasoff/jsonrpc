@@ -9,8 +9,6 @@ import (
 	"strings"
 )
 
-type Service struct{}
-
 const (
 	JsonRpcParseError     = -32700
 	JsonRpcInvalidRequest = -32600
@@ -309,49 +307,6 @@ func (srv *Server) Handler(data []byte) []byte {
 
 	return srv.buildResponse(response)
 
-}
-
-func (srv *Service) Method1() (string, error) {
-	return "result of method1", nil
-}
-
-func (srv *Service) Method2(a int, b int) (int, error) {
-	return a + b, nil
-}
-
-func (srv *Service) Method3(a []int) (int, error) {
-	if len(a) < 2 {
-		return 0, errors.New("wrong arguments number")
-	}
-	result := 0
-	for _, item := range a {
-		result += item
-	}
-
-	return result, nil
-}
-
-func (srv *Service) Method4(a []float64) (float64, error) {
-	if len(a) < 2 {
-		return 0, errors.New("wrong arguments number")
-	}
-	result := 0.0
-	for _, item := range a {
-		result += item
-	}
-
-	return result, nil
-}
-
-type Request struct {
-	Name     string `json:"name"`
-	Lastname string `json:"lastname"`
-	Phones   []int  `json:"phones"`
-}
-
-func (srv *Service) Method5(obj Request) (string, error) {
-	fmt.Printf("%+v\n", obj)
-	return "result of method5", nil
 }
 
 /*
