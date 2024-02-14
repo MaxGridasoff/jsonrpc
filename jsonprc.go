@@ -354,6 +354,7 @@ func (srv *Service) Method5(obj Request) (string, error) {
 	return "result of method5", nil
 }
 
+/*
 func main() {
 	println()
 	tmp := &Service{}
@@ -370,3 +371,4 @@ func main() {
 	server.Handler([]byte(`{"jsonrpc": "2.0", "method": "service.Method4", "params": [[1,2]], "id":"1"}`))
 	server.Handler([]byte(`{"jsonrpc": "2.0", "method": "service.Method5", "params": [{"name":"maxim", "phones":[123,456]}], "id":"1"}`))
 }
+*/
